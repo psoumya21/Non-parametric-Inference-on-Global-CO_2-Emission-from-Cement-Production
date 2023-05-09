@@ -1,0 +1,494 @@
+---
+title: "Non-Parametric"
+output: pdf_document
+date: "2023-01-17"
+---
+
+```{r,warning=FALSE}
+rm(list=ls())
+suppressMessages(library(DT))
+suppressMessages(library(tidyverse))
+suppressMessages(library(dplyr))
+```
+
+
+```{r,warning=FALSE}
+# Download the data from Zenodo
+dat <- readr::read_csv("https://zenodo.org/record/7081360/files/1.%20Cement_emissions_data.csv", show_col_types = FALSE)
+dat<-as.data.frame(dat)
+
+
+# Filter the data and present it 
+dat <-dat[dat$Year>=1931,]
+dat <- dat[ , colSums(is.na(dat))==0]
+dat <- dat[ , colSums(dat!=0)==nrow(dat)]
+dat<-dat[,-which(colnames(dat)=="Global")]
+
+library(kableExtra)
+head(dat)
+
+```
+```{r}
+#Summary of the data
+str(dat)
+```
+
+
+```{r,warning=FALSE}
+dat_gather <- dat %>% gather(key = "Country", value = "Emission", -Year)
+
+suppressMessages(library("ggplot2"))
+library(tikzDevice)
+tikz('/Users/soumyapaul/Library/CloudStorage/GoogleDrive-3ssimulationtime@gmail.com/My Drive/Non-parametric/plot_1.tex',width=7.5,height=7)
+ggplot(dat_gather, aes(x = Year, y = as.numeric(log10(Emission)), color = Country)) +
+  geom_line(aes(group = Country))  + ggtitle("$CO_2$ Emission for different countries over different period of time")+
+  labs(x = "Year", y = "$\\log_{10}{}$(Emission)", color = "") +theme(axis.text.x = element_text(angle = 0, vjust = 0.5, hjust=1),legend.position="right",legend.background = element_rect(fill="lightblue",size=0.5, linetype="dotted", colour ="darkblue"))+ guides(colour = guide_legend(nrow = 24))
+
+
+dev.off()
+```
+
+
+```{r,warning=FALSE}
+#Omitting the first four values
+dat_gather<- dat %>% dplyr::filter(Year %in% seq(1931,2021,10))
+dat_gather <- dat_gather %>% gather(key = "Country", value = "Emission", -Year)
+#Boxplot
+library(ggpubr)
+tikz('/Users/soumyapaul/Library/CloudStorage/GoogleDrive-3ssimulationtime@gmail.com/My Drive/Non-parametric/plot_2.tex',width=7.5,height=5)
+ggplot(dat_gather, aes(x = Year, y = as.numeric(log10(Emission)), color = as.factor(Year))) +
+  geom_boxplot()  + ggtitle("Global $CO_2$ Emission for different period of time")+
+  labs(x = "Year", y = "$\\log_{10}{}$(Emission)", color = "") +theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+
+dev.off()
+
+
+
+```
+
+
+
+
+```{r}
+
+dat_m<-dat[dat$Year %in% seq(1931,2021,10),]
+dat_m <-as.matrix(dat_m[,-which(colnames(dat_m)=="Year")])
+rownames(dat_m) <- seq(1931,2021,10)
+dat_t <- t(dat_m)
+```
+
+```{r}
+#Sign test for location
+library(DescTools)
+x <- as.numeric(dat_t[,"1931"])
+y <- as.numeric(dat_t[,"1941"])
+z<-x-y
+s_res <- SignTest(z,exact = T)
+s_res    #Null is rejected
+
+#Less than alternative
+s_res <- SignTest(z,alternative = "less",exact = T)
+s_res    #Null is rejected #Significant increase
+
+#Tables of decision made
+s.table<-matrix(rep(0,9),nrow = 9)
+rownames(s.table)<-c("1931 vs 1941","1941 vs 1951","1951 vs 1961","1961 vs 1971","1971 vs 1981","1981 vs 1991","1991 vs 2001","2001 vs 2011","2011 vs 2021")
+colnames(s.table)<-c("Decision made")
+
+s.dec<-c()
+for (i in seq(1931,2021,10)) {
+  if (i==2021) {
+    break
+  }
+  else{
+    x <- as.numeric(dat_t[,as.character(i)])
+    y <- as.numeric(dat_t[,as.character(i+10)])
+    z<-x-y
+    s_res <- SignTest(z,exact = T)
+    if (s_res$p.value<=0.05) {
+      s_res <- SignTest(z,alternative = "less",exact = T)
+      if (s_res$p.value<=0.05) {
+        s.dec<-c(s.dec,"There is significant increase in $CO_2$ emission")
+      }
+      else{
+        s.dec<-c(s.dec,"There is significant decrease in $CO_2$ emission")
+      }
+    }
+    else{
+      s.dec<-c(s.dec,"There is no significant change in $CO_2$ emission")
+    }
+  }
+  
+}
+
+s.table<-as.data.frame(s.table)
+s.table$`Decision made`<-s.dec
+knitr::kable(s.table)
+```
+
+
+
+
+```{r}
+#Sign test for location for different countries
+dat<-dat[!names(dat) %in% "Year"]
+x <- as.numeric(dat[,"Argentina"])
+y <- as.numeric(dat[,"Australia"])
+z<-x-y
+
+#Both sided alternative
+s_res <- SignTest(z,exact = FALSE)
+s_res    #Null is accepted
+
+
+
+#Tables of decision made
+s.table<-matrix(rep(0,276),ncol=1)
+s.table.rownames<-c()
+for (i in 1:length(colnames(dat))) {
+  for (j in 1:length(colnames(dat))) {
+    if (i<j) {
+      s.table.rownames<-c(s.table.rownames,paste(colnames(dat)[i],"vs",colnames(dat)[j]))
+    }
+  }
+}
+rownames(s.table)<-s.table.rownames
+colnames(s.table)<-c("Decision made")
+
+
+s.dec<-c()
+
+for (i in 1:length(colnames(dat))) {
+  for (j in 1:length(colnames(dat))) {
+    if (i<j) {
+      x <- as.numeric(dat[,colnames(dat)[i]])
+      y <- as.numeric(dat[,colnames(dat)[j]])
+      z<-x-y
+      s_res <- SignTest(z,exact = FALSE)
+      if (s_res$p.value<=0.05) {
+        s_res <- SignTest(z,alternative = "less",exact = FALSE)
+        if (s_res$p.value<=0.05) {
+          s.dec<-c(s.dec,"There is significant increase in CO_2 emission")
+        }
+        else{
+          s.dec<-c(s.dec,"There is significant decrease in CO_2 emission")
+        }
+      }
+      else{
+        s.dec<-c(s.dec,"There is no significant change in CO_2 emission")
+      }
+  }
+}
+
+}
+
+s.table<-as.data.frame(s.table)
+s.table$`Decision made`<-s.dec
+head(s.table,n = 20)
+
+```
+
+
+
+
+```{r}
+
+#Wilcoxon Rank-Sum test for Years assuming the populations are of the same form but with a different measure of central tendency
+x <- as.numeric(dat_t[,"1931"])
+y <- as.numeric(dat_t[,"1941"])
+#Both sided alternative
+w_res <- wilcox.test(x, y, conf.int = TRUE,exact = F)
+w_res    #Null is accepted
+
+
+#Tables of decision made
+wilcox.table<-matrix(rep(0,9),nrow = 9)
+rownames(wilcox.table)<-c("1931 vs 1941","1941 vs 1951","1951 vs 1961","1961 vs 1971","1971 vs 1981","1981 vs 1991","1991 vs 2001","2001 vs 2011","2011 vs 2021")
+colnames(wilcox.table)<-c("Decision made")
+
+wilcox.dec<-c()
+for (i in c(seq(1931,2021,10),2021)) {
+  if (i==2021) {
+    break
+  }
+  else{
+    x <- as.numeric(dat_t[,as.character(i)])
+    y <- as.numeric(dat_t[,as.character(i+10)])
+    w_res <- wilcox.test(x, y, conf.int = TRUE,exact = FALSE)
+    if (w_res$p.value<=0.05) {
+      w_res <- wilcox.test(x, y, conf.int = TRUE,exact = FALSE,alternative = "less")
+      if (w_res$p.value<=0.05) {
+        wilcox.dec<-c(wilcox.dec,"There is significant increase in CO_2 emission")
+      }
+      else{
+        wilcox.dec<-c(wilcox.dec,"There is significant decrease in CO_2 emission")
+      }
+    }
+    else{
+      wilcox.dec<-c(wilcox.dec,"There is no significant change in CO_2 emission")
+    }
+  }
+  
+}
+
+wilcox.table<-as.data.frame(wilcox.table)
+wilcox.table$`Decision made`<-wilcox.dec
+wilcox.table
+
+```
+
+```{r}
+#Wilcoxon Rank-Sum test for Countries assuming the populations are of the same form but with a different measure of central tendency
+
+x <- as.numeric(dat[,"Argentina"])
+y <- as.numeric(dat[,"Australia"])
+#Both sided alternative
+w_res <- wilcox.test(x, y, conf.int = TRUE,exact = FALSE)
+w_res    #Null is accepted
+
+
+
+#Tables of decision made
+wilcox.table<-matrix(rep(0,276),ncol=1)
+
+wilcox.table.rownames<-c()
+for (i in 1:length(colnames(dat))) {
+  for (j in 1:length(colnames(dat))) {
+    if (i<j) {
+      wilcox.table.rownames<-c(wilcox.table.rownames,paste(colnames(dat)[i],"vs",colnames(dat)[j]))
+    }
+  }
+}
+rownames(wilcox.table)<-wilcox.table.rownames
+colnames(wilcox.table)<-c("Decision made")
+
+wilcox.dec<-c()
+
+for (i in 1:length(colnames(dat))) {
+  for (j in 1:length(colnames(dat))) {
+    if (i<j) {
+      x <- as.numeric(dat[,colnames(dat)[i]])
+      y <- as.numeric(dat[,colnames(dat)[j]])
+      w_res <- wilcox.test(x, y, conf.int = TRUE,exact = FALSE)
+      if (w_res$p.value<=0.05) {
+        w_res <- wilcox.test(x, y, conf.int = TRUE,exact = FALSE,alternative = "less")
+        if (w_res$p.value<=0.05) {
+          wilcox.dec<-c(wilcox.dec,"There is significant increase in CO_2 emission")
+        }
+        else{
+          wilcox.dec<-c(wilcox.dec,"There is significant decrease in CO_2 emission")
+        }
+      }
+      else{
+        wilcox.dec<-c(wilcox.dec,"There is no significant change in CO_2 emission")
+      }
+  }
+}
+
+}
+
+wilcox.table<-as.data.frame(wilcox.table)
+wilcox.table$`Decision made`<-wilcox.dec
+wilcox.table
+
+```
+
+
+
+
+
+```{r}
+#Mood's test for scale for decade
+x <- as.numeric(dat_t[,"1931"])
+y <- as.numeric(dat_t[,"1941"])
+mood_res <- mood.test(x,y)
+mood_res    #Null is accepted
+
+
+#Tables of decision made
+mood.table<-matrix(rep(0,6),ncol=1)
+rownames(mood.table)<-c("1961 vs 1971","1971 vs 1981","1981 vs 1991","1991 vs 2001","2001 vs 2011","2011 vs 2021")
+colnames(mood.table)<-c("Decision made")
+
+mood.dec<-c()
+for (i in c(1981,2001,2011)) {
+  if (i==2021) {
+    break
+  }
+  else{
+    x <- as.numeric(dat_t[,as.character(i)])
+    y <- as.numeric(dat_t[,as.character(i+10)])
+    mood_res <- mood.test(x,y)
+    if (mood_res$p.value<=0.05) {
+      mood_res <- mood.test(x,y,alternative = "less")
+      if (mood_res$p.value<=0.05) {
+        mood.dec<-c(mood.dec,"There is significant increase in CO_2 emission")
+      }
+      else{
+        mood.dec<-c(mood.dec,"There is significant decrease in CO_2 emission")
+      }
+    }
+    else{
+      mood.dec<-c(mood.dec,"There is no significant change in CO_2 emission")
+    }
+  }
+  
+}
+
+mood.table<-as.data.frame(mood.table)
+mood.table$`Decision made`<-mood.dec
+mood.table
+```
+
+```{r}
+library(stringr)
+#Mood's test for different pairs of countries
+wilcox.dat<-as.data.frame(wilcox.table)
+#The subset we are interested in
+country.subset<-rownames(wilcox.table)[wilcox.dat$`Decision made`=="There is no significant change in CO_2 emission"]
+
+
+x <- as.numeric(dat[,"Argentina"])
+y <- as.numeric(dat[,"Australia"])
+#Both sided alternative
+mood_res <- mood.test(x, y, conf.int = TRUE,exact = FALSE)
+mood_res    #Null is accepted
+
+
+#Function for both sided decision
+DecisionMadeBoth<-function(string){
+  first.country<-str_trim(sub("vs.*","",string))
+  second.country<-str_trim(sub(".*vs","",string))
+  x <- as.numeric(dat[,first.country])
+  y <- as.numeric(dat[,second.country])
+  #Both sided alternative
+  mood_res <- mood.test(x, y)
+  return(mood_res)    #Null is rejected
+}
+
+#Function for left sided decision
+DecisionMadeless<-function(string){
+  first.country<-str_trim(sub("vs.*","",string))
+  second.country<-str_trim(sub(".*vs","",string))
+  x <- as.numeric(dat[,first.country])
+  y <- as.numeric(dat[,second.country])
+  #Both sided alternative
+  mood_res <- mood.test(x, y, alternative = "less")
+  return(mood_res)    #Null is rejected
+}
+
+
+
+#Tables of decision made
+mood.table<-matrix(rep(0,length(country.subset)),ncol=1)
+
+
+rownames(mood.table)<-country.subset
+colnames(mood.table)<-c("Decision made")
+
+mood.dec<-c()
+
+#Decision Table
+for (i in 1:length(country.subset)) {
+  if (DecisionMadeBoth(country.subset[i])$p.value<=0.05) {
+    if (DecisionMadeless(country.subset[i])$p.value<=0.05) {
+      mood.dec<-c(mood.dec,"There is significant increase in CO_2 emission")
+    }
+    else{
+        mood.dec<-c(mood.dec,"There is significant decrease in CO_2 emission")
+      }
+    }
+  else{
+    mood.dec<-c(mood.dec,"There is no significant change in CO_2 emission")
+  }
+}
+
+
+mood.table<-as.data.frame(mood.table)
+mood.table$`Decision made`<-mood.dec
+mood.table
+
+```
+
+
+
+```{r}
+#Standard deviations for different countries
+sd_data=as.data.frame(apply(dat,2,sd))
+colnames(sd_data)="Standard Deviation"
+#Standard deviations for decades
+apply(dat_m,1,sd)
+
+#Kruskal-Wallis
+
+dat_gather_2<-data.frame(Year=rep(1931:2021,ncol(dat[,c("Argentina","Peru","Portugal")])),
+                       Country=rep(colnames(dat[,c("Argentina","Peru","Portugal")]),each=nrow(dat[,c("Argentina","Peru","Portugal")])),
+                       Emission=as.vector(as.matrix(dat[,c("Argentina","Peru","Portugal")])))
+
+#For decade
+(k_res <- kruskal.test(dat_gather_2$Emission, as.factor(dat_gather_2$Country)))
+```
+
+
+```{r}
+#Kendall's tau measure of association
+
+x <- as.numeric(dat[,"Argentina"])
+y <- as.numeric(dat[,"Australia"])
+#Both sided alternative
+kendall_res <- cor.test(x,y,method = "kendall",exact = F)
+kendall_res    #Null is rejected
+#Greater than alternative
+kendall_res <- cor.test(x,y,method = "kendall",exact = F,alternative = "greater")
+kendall_res    #Null is rejected
+
+
+#Tables of decision made
+kendall.table<-matrix(rep(0,276),ncol=1)
+kendall.table.rownames<-c()
+for (i in 1:length(colnames(dat))) {
+  for (j in 1:length(colnames(dat))) {
+    if (i<j) {
+      kendall.table.rownames<-c(kendall.table.rownames,paste(colnames(dat)[i],"vs",colnames(dat)[j]))
+    }
+  }
+}
+rownames(kendall.table)<-kendall.table.rownames
+colnames(kendall.table)<-c("Decision made")
+
+kendall.dec<-c()
+
+for (i in 1:length(colnames(dat))) {
+  for (j in 1:length(colnames(dat))) {
+    if (i<j) {
+      x <- as.numeric(dat[,colnames(dat)[i]])
+      y <- as.numeric(dat[,colnames(dat)[j]])
+      kendall_res <- cor.test(x,y,method = "kendall",exact = F)
+      if (kendall_res$p.value<=0.05) {
+        kendall_res <- cor.test(x,y,method = "kendall",exact = F,alternative = "greater")
+        if (kendall_res$p.value<=0.05) {
+          kendall.dec<-c(kendall.dec,"There is positive association")
+        }
+        else{
+          kendall.dec<-c(kendall.dec,"There is negative association")
+        }
+      }
+      else{
+        kendall.dec<-c(kendall.dec,"There is no association")
+      }
+  }
+}
+
+}
+
+kendall.table<-as.data.frame(kendall.table)
+kendall.table$`Decision made`<-kendall.dec
+kendall.table
+```
+```{r}
+# Count of categories
+table(kendall.table)
+```
+
+
